@@ -1,0 +1,55 @@
+name: Build Godot APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget unzip openjdk-8-jdk
+
+      - name: Download Godot 3.5.3
+        run: |
+          wget -q https://downloads.tuxfamily.org/godotengine/3.5.3/Godot_v3.5.3-stable_linux_headless.64.zip
+          unzip Godot_v3.5.3-stable_linux_headless.64.zip
+          chmod +x Godot_v3.5.3-stable_linux_headless.64
+
+      - name: Download Android export templates
+        run: |
+          wget -q https://downloads.tuxfamily.org/godotengine/3.5.3/Godot_v3.5.3-stable_export_templates.tpz
+          mkdir -p ~/.local/share/godot/templates/3.5.3.stable
+          unzip -q Godot_v3.5.3-stable_export_templates.tpz -d /tmp/templates
+          cp -r /tmp/templates/templates/* ~/.local/share/godot/templates/3.5.3.stable/
+
+      - name: Check project
+        run: |
+          ./Godot_v3.5.3-stable_linux_headless.64 \
+            --path . \
+            --editor \
+            --headless \
+            --quit
+
+      - name: Export APK
+        run: |
+          mkdir -p build
+          ./Godot_v3.5.3-stable_linux_headless.64 \
+            --path . \
+            --export-debug "Android" \
+            build/game.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Godot-APK
+          path: build/game.apk

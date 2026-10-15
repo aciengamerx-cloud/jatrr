@@ -35,11 +35,25 @@ jobs:
           cp -r templates/templates/* \
             ~/.local/share/godot/templates/3.5.3.stable/
 
-      - name: Export Android APK
+      - name: Import Godot project assets
         run: |
           ./Godot_v3.5.3-stable_linux_headless.64 \
             --path . \
-            --export-debug "Android" game.apk
+            --editor \
+            --quit
+
+      - name: Configure Android debug keystore
+        run: |
+          mkdir -p ~/.android
+          keytool -genkeypair \
+            -keystore ~/.android/debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

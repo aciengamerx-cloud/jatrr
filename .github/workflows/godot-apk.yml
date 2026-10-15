@@ -6,47 +6,62 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget unzip openjdk-11-jdk
+          sudo apt-get install -y \
+            wget unzip openjdk-11-jdk
 
       - name: Download Godot 3.5.3
         run: |
           wget -O godot.zip \
             https://github.com/godotengine/godot/releases/download/3.5.3-stable/Godot_v3.5.3-stable_linux_headless.64.zip
+
           unzip -o godot.zip
           chmod +x Godot_v3.5.3-stable_linux_headless.64
 
-      - name: Download Android export templates
+      - name: Install export templates
         run: |
-          mkdir -p ~/.local/share/godot/templates/3.5.3.stable
+          mkdir -p "$HOME/.local/share/godot/templates/3.5.3.stable"
+
           wget -O templates.tpz \
             https://github.com/godotengine/godot/releases/download/3.5.3-stable/Godot_v3.5.3-stable_export_templates.tpz
+
+          mkdir -p templates
           unzip -o templates.tpz -d templates
+
           cp -r templates/templates/* \
-            ~/.local/share/godot/templates/3.5.3.stable/
+            "$HOME/.local/share/godot/templates/3.5.3.stable/"
 
-      - name: Import Godot project assets
-        run: |
-          ./Godot_v3.5.3-stable_linux_headless.64 \
-            --path . \
-            --editor \
-            --quit
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Configure Android debug keystore
+      - name: Configure Java
         run: |
-          mkdir -p ~/.android
+          echo "JAVA_HOME=$JAVA_HOME"
+          java -version
+          keytool -help >/dev/null 2>&1
+
+      - name: Configure debug keystore
+        run: |
+          mkdir -p "$HOME/.android"
+
           keytool -genkeypair \
-            -keystore ~/.android/debug.keystore \
+            -keystore "$HOME/.android/debug.keystore" \
             -storepass android \
             -alias androiddebugkey \
             -keypass android \
@@ -55,8 +70,74 @@ jobs:
             -validity 10000 \
             -dname "CN=Android Debug,O=Android,C=US"
 
+      - name: Configure Godot export preset
+        run: |
+          sed -i \
+            "s|keystore/debug=\"\"|keystore/debug=\"$HOME/.android/debug.keystore\"|" \
+            export_presets.cfg
+
+          sed -i \
+            's|keystore/debug_user=""|keystore/debug_user="androiddebugkey"|' \
+            export_presets.cfg
+
+          sed -i \
+            's|keystore/debug_password=""|keystore/debug_password="android"|' \
+            export_presets.cfg
+
+          sed -i \
+            's|keystore/release="C:/Dev/Godot Projects/JatRR/jatrr.keystore"|keystore/release=""|' \
+            export_presets.cfg
+
+          sed -i \
+            's|keystore/release_user="jatrr"|keystore/release_user=""|' \
+            export_presets.cfg
+
+          sed -i \
+            's|keystore/release_password=""|keystore/release_password=""|' \
+            export_presets.cfg
+
+      - name: Import Godot project assets
+        run: |
+          ./Godot_v3.5.3-stable_linux_headless.64 \
+            --path . \
+            --editor \
+            --import \
+            --quit
+
+      - name: Check custom Android build files
+        run: |
+          if [ ! -d android/build ]; then
+            echo "::error::Custom Android build is enabled, but android/build is missing."
+            echo "This project may need its Godot 3.5.3 Android custom build template."
+            exit 1
+          fi
+
+          if [ ! -f android/build/gradlew ]; then
+            echo "::error::Android custom build Gradle wrapper is missing."
+            exit 1
+          fi
+
+      - name: Export Android APK
+        run: |
+          mkdir -p build
+
+          ./Godot_v3.5.3-stable_linux_headless.64 \
+            --path . \
+            --export-debug "Android" build/JatRR.apk
+
+      - name: Verify APK
+        run: |
+          if [ ! -s build/JatRR.apk ]; then
+            echo "::error::APK was not created."
+            exit 1
+          fi
+
+          ls -lh build/JatRR.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Godot-Android-APK
-          path: game.apk
+          name: JatRR-Android-APK
+          path: build/JatRR.apk
+          if-no-files-found: error
+          retention-days: 7
